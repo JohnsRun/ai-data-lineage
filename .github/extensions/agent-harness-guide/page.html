@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Agent harnesses in VS Code</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font: 15px/1.55 system-ui, sans-serif;
+        --border: color-mix(in srgb, currentColor 18%, transparent);
+        --surface: color-mix(in srgb, Canvas 94%, currentColor 6%);
+        --muted: color-mix(in srgb, currentColor 72%, transparent);
+      }
+
+      body {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 28px 22px 48px;
+        color: CanvasText;
+        background: Canvas;
+      }
+
+      h1, h2 { line-height: 1.2; }
+      h1 { margin-bottom: 8px; }
+      h2 { margin-top: 32px; }
+      .intro, .note { color: var(--muted); }
+      .table-wrap { overflow-x: auto; }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 16px;
+      }
+
+      th, td {
+        border: 1px solid var(--border);
+        padding: 12px;
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th { background: var(--surface); }
+      td:first-child { min-width: 110px; font-weight: 650; }
+
+      .panel {
+        margin-top: 22px;
+        padding: 16px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--surface);
+      }
+
+      label { display: block; margin-bottom: 8px; font-weight: 600; }
+      select, button {
+        min-height: 40px;
+        padding: 8px 12px;
+        color: inherit;
+        background: Canvas;
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        font: inherit;
+      }
+
+      button { margin-left: 8px; cursor: pointer; }
+      :focus-visible { outline: 3px solid #4f8cff; outline-offset: 2px; }
+      #result { min-height: 1.6em; margin-bottom: 0; }
+      #result strong { display: block; margin-bottom: 4px; }
+
+      @media (max-width: 640px) {
+        body { padding: 18px 14px 32px; }
+        button { display: block; margin: 10px 0 0; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Copilot vs local vs cloud</h1>
+      <p class="intro">A harness is the environment that hosts an agent and gives it access to models, tools, and workspaces. These labels describe common setups; exact behavior depends on the VS Code host, provider, and organization policy.</p>
+
+      <div class="table-wrap">
+        <table>
+          <caption class="intro">Practical differences between the three harness choices</caption>
+          <thead>
+            <tr>
+              <th scope="col">Harness</th>
+              <th scope="col">Where it runs / access</th>
+              <th scope="col">Best suited for</th>
+              <th scope="col">Main consideration</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">Copilot</th>
+              <td>Uses the Copilot-managed agent experience and the capabilities enabled by your VS Code setup and account.</td>
+              <td>Interactive work in the editor; a convenient default when you want built-in integration.</td>
+              <td>Available models, tools, and execution behavior are governed by the host and your organization’s settings.</td>
+            </tr>
+            <tr>
+              <th scope="row">Local</th>
+              <td>Runs agent tools on your machine, with access to local files and processes granted to that runtime.</td>
+              <td>Direct control over local development tools or workflows that need your local environment.</td>
+              <td>Local execution does not necessarily mean local model inference; model requests may still use a remote provider.</td>
+            </tr>
+            <tr>
+              <th scope="row">Cloud</th>
+              <td>Runs in a remote environment with repository and tool access provided by that service.</td>
+              <td>Background or longer-running work that should not depend on your workstation staying active.</td>
+              <td>Check what repository data is transferred, what permissions are granted, and any isolation or usage limits.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <section class="panel" aria-labelledby="recommend-title">
+        <h2 id="recommend-title">Quick recommendation</h2>
+        <form id="recommend-form">
+          <label for="goal">What matters most for this task?</label>
+          <select id="goal" name="goal">
+            <option value="in_editor">Integrated, interactive work in VS Code</option>
+            <option value="local_control">Control over local files and tools</option>
+            <option value="background_work">Remote or background execution</option>
+            <option value="data_sensitivity">Keeping repository operations local</option>
+          </select>
+          <button type="submit">Recommend a harness</button>
+        </form>
+        <p id="result" role="status" aria-live="polite"></p>
+      </section>
+
+      <p class="note"><strong>Privacy reminder:</strong> “Local” describes where agent tools run, not necessarily where the model processes prompts. Confirm model routing and data policies for your specific host before using sensitive code.</p>
+    </main>
+    <script>
+      const form = document.querySelector("#recommend-form");
+      const result = document.querySelector("#result");
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        result.textContent = "Getting recommendation…";
+        try {
+          const response = await fetch("/recommend", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ goal: form.elements.goal.value }),
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || "Recommendation failed.");
+          result.replaceChildren();
+          const heading = document.createElement("strong");
+          heading.textContent = `Recommended: ${data.harness}`;
+          const reason = document.createElement("span");
+          reason.textContent = `${data.reason} ${data.caveat}`;
+          result.append(heading, reason);
+        } catch (error) {
+          result.textContent = `Could not get a recommendation: ${error.message}`;
+        }
+      });
+    </script>
+  </body>
+</html>

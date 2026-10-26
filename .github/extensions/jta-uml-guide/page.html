@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>JTA UML Guide</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+  body { margin: 0; padding: 16px; line-height: 1.4; }
+  h1 { font-size: 1.2rem; margin: 0 0 4px; }
+  p.lead { margin: 0 0 12px; opacity: .8; }
+  [role=tablist] { display: flex; gap: 6px; margin-bottom: 12px; }
+  button { font: inherit; padding: 6px 12px; border: 1px solid #888; border-radius: 6px; background: transparent; color: inherit; cursor: pointer; }
+  button[aria-selected=true] { background: #0a6cff; color: #fff; border-color: #0a6cff; }
+  button:focus-visible { outline: 3px solid #f90; outline-offset: 2px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+  .cls { border: 1px solid #888; border-radius: 4px; overflow: hidden; font-size: .85rem; }
+  .cls h3 { margin: 0; padding: 4px 8px; font-size: .9rem; background: rgba(10,108,255,.18); text-align: center; }
+  .cls ul { margin: 0; padding: 6px 8px; list-style: none; font-family: ui-monospace, monospace; }
+  .dom { margin: 14px 0 6px; font-size: .95rem; }
+  table { border-collapse: collapse; width: 100%; font-size: .85rem; }
+  td, th { border-bottom: 1px solid #8884; padding: 4px 6px; text-align: left; }
+  pre { background: #8882; padding: 10px; border-radius: 6px; overflow: auto; max-height: 40vh; }
+  #status { min-height: 1.2em; font-size: .85rem; }
+</style>
+</head>
+<body>
+<h1>JTA database &rarr; UML</h1>
+<p class="lead">Class, package and sequence views built from <code>JTA_Create_Database.sql</code> and <code>JTA_Packages.sql</code>.</p>
+<div role="tablist" aria-label="UML views">
+  <button role="tab" id="t-class" aria-selected="true" data-kind="class">Class (tables)</button>
+  <button role="tab" id="t-package" aria-selected="false" data-kind="package">Package</button>
+  <button role="tab" id="t-sequence" aria-selected="false" data-kind="sequence">Sequence (payroll)</button>
+</div>
+<section id="view" role="tabpanel" aria-live="polite"></section>
+<h2 style="font-size:1rem">Mermaid source</h2>
+<button id="copy">Copy Mermaid</button>
+<span id="status" role="status"></span>
+<pre id="src"></pre>
+<script>
+let model, kind = "class";
+const view = document.getElementById("view");
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+function box(name, lines, stereo) {
+  return `<div class="cls"><h3>${stereo ? "&laquo;" + esc(stereo) + "&raquo;<br>" : ""}${esc(name)}</h3><ul>${lines.map((l) => `<li>${esc(l)}</li>`).join("")}</ul></div>`;
+}
+
+function render() {
+  let html = "";
+  if (kind === "class") {
+    const domains = [...new Set(model.classes.map((c) => c.domain))];
+    for (const d of domains) {
+      html += `<h2 class="dom">${esc(d)}</h2><div class="grid">` +
+        model.classes.filter((c) => c.domain === d).map((c) => box(c.name, c.attrs)).join("") + "</div>";
+    }
+    html += `<h2 class="dom">Associations (from FOREIGN KEYs)</h2><table><tr><th>Child</th><th>Mult.</th><th>Parent</th><th>Label</th></tr>` +
+      model.relations.map(([c, p, m, l]) => `<tr><td>${esc(c)}</td><td>${esc(m)}..1</td><td>${esc(p)}</td><td>${esc(l)}</td></tr>`).join("") + "</table>";
+  } else if (kind === "package") {
+    html = '<div class="grid">' + model.packages.map((p) => box(p.name, p.members, "package")).join("") + "</div>" +
+      "<p><code>pkg_jta</code> &#8943;&gt; <code>pkg_jta_error</code> (uses) &#8943;&gt; <code>jta_errors</code> (writes)</p>";
+  } else {
+    html = `<table><tr><th>#</th><th>From</th><th>To</th><th>Message</th></tr>` +
+      model.sequence.map(([f, t, m], i) => `<tr><td>${i + 1}</td><td>${esc(f)}</td><td>${esc(t)}</td><td>${esc(m)}</td></tr>`).join("") + "</table>";
+  }
+  view.innerHTML = html;
+  document.getElementById("src").textContent = model.mermaid[kind];
+  for (const b of document.querySelectorAll("[role=tab]")) b.setAttribute("aria-selected", String(b.dataset.kind === kind));
+}
+
+document.querySelector("[role=tablist]").addEventListener("click", (e) => {
+  const b = e.target.closest("[role=tab]");
+  if (b) { kind = b.dataset.kind; render(); }
+});
+document.getElementById("copy").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText(model.mermaid[kind]); document.getElementById("status").textContent = "Copied."; }
+  catch { document.getElementById("status").textContent = "Select the text below and copy manually."; }
+});
+fetch("/api/model").then((r) => r.json()).then((m) => { model = m; render(); });
+</script>
+</body>
+</html>

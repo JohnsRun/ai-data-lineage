@@ -1,0 +1,21 @@
+[project]
+name = "datalineague"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Johns_Run", email = "1173858005@qq.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "antlr4-python3-runtime>=4.13.2",
+    "networkx>=3.7",
+    "sqlglot>=30.23.0",
+]
+
+[project.scripts]
+datalineague = "datalineague:main"
+
+[build-system]
+requires = ["uv_build>=0.12.18,<0.13.0"]
+build-backend = "uv_build"
