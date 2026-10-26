@@ -87,46 +87,6 @@ sequenceDiagram
     └── sp_get_hours.lineage.md
 ```
 
-## Standalone scanner executable
-
-The orchestrator agent uses standalone Rust scanner executables stored in
-`.github/agents/plsql-lineage-orchestrator/`. They do not require Python or
-third-party packages on the deployment computer. Choose the binary matching
-the deployment OS and architecture; never run a binary built for a different
-platform.
-
-```bash
-. "$HOME/.cargo/env"
-cargo build --locked --release --manifest-path native/Cargo.toml --bin plsql-lineage-scanner
-cp native/target/release/plsql-lineage-scanner \
-  .github/agents/plsql-lineage-orchestrator/plsql-lineage-scanner-macos-arm64
-```
-
-For Windows x64, build with the Windows GNU target and a MinGW-w64 linker:
-
-```powershell
-cargo build --locked --release --target x86_64-pc-windows-gnu --manifest-path native/Cargo.toml --bin plsql-lineage-scanner
-Copy-Item native/target/x86_64-pc-windows-gnu/release/plsql-lineage-scanner.exe `
-  .github/agents/plsql-lineage-orchestrator/plsql-lineage-scanner-windows-x64.bin
-```
-
-Run it with one or more PL/SQL files or directories and a registry output path:
-
-```bash
-.github/agents/plsql-lineage-orchestrator/plsql-lineage-scanner-macos-arm64 \
-  src/datalineague/pkg.sql -o object-registry.json
-```
-
-On Windows x64, use PowerShell:
-
-```powershell
-& ".github/agents/plsql-lineage-orchestrator/plsql-lineage-scanner-windows-x64.bin" `
-  "src/datalineague/pkg.sql" -o "object-registry.json"
-```
-
-The standalone executable is Rust-only. The Python project package also
-provides an optional native extension built through Maturin.
-
 ## Output example
 
 The following report demonstrates the expected structure and level of
