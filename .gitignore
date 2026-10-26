@@ -5,6 +5,10 @@ build/
 dist/
 wheels/
 *.egg-info
+/native/target/
+/src/datalineague/_native.*.so
+/src/datalineague/_native.*.dylib
+/src/datalineague/_native.*.pyd
 
 # Virtual environments
 .venv

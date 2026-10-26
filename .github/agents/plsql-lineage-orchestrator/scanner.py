@@ -9,6 +9,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterable
 
+from datalineague import _native
+
 
 SOURCE_EXTENSIONS = {".pkb", ".pks", ".pkg", ".sql"}
 IGNORED_DIRECTORIES = {".git", ".venv", "__pycache__"}
@@ -86,91 +88,25 @@ def discover_sources(paths: Iterable[Path]) -> list[Path]:
     return sorted(set(sources), key=lambda item: item.as_posix())
 
 
-def _line_at(source: str, offset: int) -> int:
-    return source.count("\n", 0, offset) + 1
+def _line_at(line_index: _native.LineIndex, offset: int) -> int:
+    return line_index.line_at(offset)
 
 
-def _mask_span(chars: list[str], start: int, end: int) -> None:
-    for index in range(start, end):
-        if chars[index] != "\n":
-            chars[index] = " "
-
-
-def _mask_non_code(source: str, source_file: str) -> tuple[str, list[Diagnostic]]:
-    chars = list(source)
-    diagnostics: list[Diagnostic] = []
-    index = 0
-    while index < len(source):
-        if source.startswith("--", index):
-            end = source.find("\n", index)
-            end = len(source) if end == -1 else end
-            _mask_span(chars, index, end)
-            index = end
-        elif source.startswith("/*", index):
-            end = source.find("*/", index + 2)
-            if end == -1:
-                diagnostics.append(
-                    Diagnostic(
-                        "UNTERMINATED_BLOCK_COMMENT",
-                        "Block comment is not closed; remaining text was ignored.",
-                        source_file,
-                        _line_at(source, index),
-                        _line_at(source, len(source)),
-                    )
-                )
-                _mask_span(chars, index, len(source))
-                break
-            end += 2
-            _mask_span(chars, index, end)
-            index = end
-        elif source[index] == "'":
-            end = index + 1
-            while end < len(source):
-                if source[end] == "'" and end + 1 < len(source) and source[end + 1] == "'":
-                    end += 2
-                elif source[end] == "'":
-                    end += 1
-                    break
-                else:
-                    end += 1
-            else:
-                diagnostics.append(
-                    Diagnostic(
-                        "UNTERMINATED_STRING",
-                        "String literal is not closed; remaining text was ignored.",
-                        source_file,
-                        _line_at(source, index),
-                        _line_at(source, len(source)),
-                    )
-                )
-            _mask_span(chars, index, end)
-            index = end
-        elif (
-            source[index : index + 2].lower() == "q'"
-            and index + 2 < len(source)
-        ):
-            opening = source[index + 2]
-            closing = {"[": "]", "(": ")", "{": "}", "<": ">"}.get(opening, opening)
-            marker = closing + "'"
-            end = source.find(marker, index + 3)
-            if end == -1:
-                diagnostics.append(
-                    Diagnostic(
-                        "UNTERMINATED_Q_STRING",
-                        "Alternative quoted string is not closed; remaining text was ignored.",
-                        source_file,
-                        _line_at(source, index),
-                        _line_at(source, len(source)),
-                    )
-                )
-                end = len(source)
-            else:
-                end += len(marker)
-            _mask_span(chars, index, end)
-            index = end
-        else:
-            index += 1
-    return "".join(chars), diagnostics
+def _mask_non_code(
+    source: str, source_file: str, line_index: _native.LineIndex
+) -> tuple[str, list[Diagnostic]]:
+    masked, raw_diagnostics = _native.mask_non_code(source)
+    diagnostics = [
+        Diagnostic(
+            code,
+            message,
+            source_file,
+            _line_at(line_index, start),
+            _line_at(line_index, end),
+        )
+        for code, message, start, end in raw_diagnostics
+    ]
+    return masked, diagnostics
 
 
 def _find_matching_parenthesis(source: str, opening: int) -> int | None:
@@ -209,92 +145,48 @@ def _evidence(source: str, start: int, end: int) -> str:
     return source[start:end].strip()
 
 
-def _find_routine_end(masked: str, header_end: int) -> int | None:
-    body_start = re.search(r"\bBEGIN\b", masked[header_end:], re.IGNORECASE)
-    if body_start is None:
-        return None
-    begin_offset = header_end + body_start.start()
-    stack = ["BEGIN"]
-    tokens = re.compile(r"\bBEGIN\b|\bIF\b|\bLOOP\b|\bCASE\b|\bEND\b", re.IGNORECASE)
-    skip_until = begin_offset
-    for token in tokens.finditer(masked, begin_offset):
-        if token.start() < skip_until:
-            continue
-        word = token.group().upper()
-        if token.start() == begin_offset:
-            continue
-        if word in {"BEGIN", "IF", "LOOP", "CASE"}:
-            stack.append(word)
-            continue
-        following = re.match(
-            rf"\s*(?:(?P<kind>IF|LOOP|CASE)|(?P<name>{IDENTIFIER}))?\s*;",
-            masked[token.end() :],
-            re.IGNORECASE,
-        )
-        if following is None:
-            continue
-        expected = following.group("kind")
-        if expected is not None:
-            if stack and stack[-1] == expected.upper():
-                stack.pop()
-        elif stack and stack[-1] == "BEGIN":
-            stack.pop()
-        skip_until = token.end() + following.end()
-        if not stack:
-            return skip_until
-    return None
-
-
 def _routine_candidates(
-    source: str, masked: str, source_file: str, diagnostics: list[Diagnostic]
+    source: str,
+    masked: str,
+    source_file: str,
+    diagnostics: list[Diagnostic],
+    line_index: _native.LineIndex,
 ) -> list[_Routine]:
-    pattern = re.compile(
-        rf"(?im)^[ \t]*(?P<kind>PROCEDURE|FUNCTION)[ \t]+(?P<name>{IDENTIFIER})"
-        r"(?P<header>.*?)(?P<terminator>\bIS\b|\bAS\b|;)",
-        re.DOTALL,
-    )
-    candidates: list[_Routine] = []
-    for match in pattern.finditer(masked):
-        name = match.group("name")
-        terminator = match.group("terminator").upper()
-        if terminator == ";":
-            continue
-        end = _find_routine_end(masked, match.end())
-        if end is None:
-            diagnostics.append(
-                Diagnostic(
-                    "UNTERMINATED_ROUTINE",
-                    f"{match.group('kind').title()} {name} has no named END delimiter.",
-                    source_file,
-                    _line_at(source, match.start()),
-                    _line_at(source, match.end()),
-                )
-            )
-            end = match.end()
-        candidates.append(
-            _Routine(
-                kind=match.group("kind").upper(),
-                name=name.upper(),
-                start=match.start(),
-                header_end=match.end(),
-                end=end,
-                body_start=match.end(),
-            )
+    raw_candidates, raw_diagnostics = _native.routine_candidates(masked)
+    diagnostics.extend(
+        Diagnostic(
+            code,
+            message,
+            source_file,
+            _line_at(line_index, start),
+            _line_at(line_index, end),
         )
-    for routine in candidates:
-        parents = [
-            candidate
-            for candidate in candidates
-            if candidate is not routine
-            and candidate.start < routine.start
-            and routine.end <= candidate.end
-        ]
-        routine.parent = min(parents, key=lambda item: item.end - item.start, default=None)
-    return sorted(candidates, key=lambda item: (item.start, -item.end))
+        for code, message, start, end in raw_diagnostics
+    )
+    candidates = [
+        _Routine(
+            kind,
+            name,
+            start,
+            header_end,
+            end,
+            header_end,
+        )
+        for kind, name, start, header_end, end, _ in raw_candidates
+    ]
+    for index, candidate in enumerate(raw_candidates):
+        parent_index = candidate[5]
+        if parent_index is not None:
+            candidates[index].parent = candidates[parent_index]
+    return candidates
 
 
 def _parameters(
-    source: str, masked: str, routine: _Routine, source_file: str
+    source: str,
+    masked: str,
+    routine: _Routine,
+    source_file: str,
+    line_index: _native.LineIndex,
 ) -> list[Entity]:
     opening = masked.find("(", routine.start, routine.header_end)
     if opening == -1:
@@ -322,8 +214,8 @@ def _parameters(
                 "PARAMETER",
                 routine.object_id,
                 source_file,
-                _line_at(source, parameter_start),
-                _line_at(source, parameter_start + len(fragment)),
+                _line_at(line_index, parameter_start),
+                _line_at(line_index, parameter_start + len(fragment)),
                 "resolved",
                 datatype=_normalize(match.group("datatype")),
                 mode=_normalize(match.group("mode") or "IN").upper(),
@@ -334,7 +226,11 @@ def _parameters(
 
 
 def _declaration_entities(
-    source: str, masked: str, routine: _Routine, source_file: str
+    source: str,
+    masked: str,
+    routine: _Routine,
+    source_file: str,
+    line_index: _native.LineIndex,
 ) -> list[Entity]:
     assert routine.body_start is not None
     begin_match = re.search(r"\bBEGIN\b", masked[routine.body_start : routine.end], re.IGNORECASE)
@@ -361,8 +257,8 @@ def _declaration_entities(
                 "CURSOR",
                 routine.object_id,
                 source_file,
-                _line_at(source, start + match.start()),
-                _line_at(source, statement_end),
+                _line_at(line_index, start + match.start()),
+                _line_at(line_index, statement_end),
                 "resolved",
                 evidence=_evidence(source, start + match.start(), statement_end),
             )
@@ -380,8 +276,8 @@ def _declaration_entities(
                 "TYPE",
                 routine.object_id,
                 source_file,
-                _line_at(source, start + match.start()),
-                _line_at(source, statement_end),
+                _line_at(line_index, start + match.start()),
+                _line_at(line_index, statement_end),
                 "resolved",
                 evidence=_evidence(source, start + match.start(), statement_end),
             )
@@ -410,8 +306,8 @@ def _declaration_entities(
                         "VARIABLE",
                         routine.object_id,
                         source_file,
-                        _line_at(source, statement_start),
-                        _line_at(source, statement_end + 1),
+                        _line_at(line_index, statement_start),
+                        _line_at(line_index, statement_end + 1),
                         "resolved",
                         datatype=_normalize(match.group("datatype")),
                         evidence=_evidence(source, statement_start, statement_end + 1),
@@ -423,7 +319,8 @@ def _declaration_entities(
 
 def scan_source(source: str, source_file: str) -> Registry:
     """Scan one PL/SQL source text into Phase 1 registry entities."""
-    masked, diagnostics = _mask_non_code(source, source_file)
+    line_index = _native.LineIndex(source)
+    masked, diagnostics = _mask_non_code(source, source_file, line_index)
     package_matches = list(
         re.finditer(
             rf"\bCREATE\s+OR\s+REPLACE\s+PACKAGE(?:\s+BODY)?\s+(?P<name>{IDENTIFIER})\b",
@@ -440,7 +337,7 @@ def scan_source(source: str, source_file: str) -> Registry:
                 "No CREATE OR REPLACE PACKAGE declaration was found.",
                 source_file,
                 1,
-                _line_at(source, len(source)),
+                _line_at(line_index, len(source)),
             )
         )
     else:
@@ -452,8 +349,8 @@ def scan_source(source: str, source_file: str) -> Registry:
                 "PACKAGE",
                 None,
                 source_file,
-                _line_at(source, first_package.start()),
-                _line_at(source, len(source)),
+                _line_at(line_index, first_package.start()),
+                _line_at(line_index, len(source)),
                 "resolved",
                 evidence=_evidence(source, first_package.start(), first_package.end()),
             )
@@ -464,12 +361,14 @@ def scan_source(source: str, source_file: str) -> Registry:
                     "MULTIPLE_PACKAGES",
                     "Only the first package is registered from a single source file.",
                     source_file,
-                    _line_at(source, package_matches[1].start()),
-                    _line_at(source, package_matches[-1].end()),
+                    _line_at(line_index, package_matches[1].start()),
+                    _line_at(line_index, package_matches[-1].end()),
                 )
             )
 
-    routines = _routine_candidates(source, masked, source_file, diagnostics)
+    routines = _routine_candidates(
+        source, masked, source_file, diagnostics, line_index
+    )
     name_counts: dict[tuple[str, str], int] = {}
     for routine in routines:
         parent_id = routine.parent.object_id if routine.parent else package_id
@@ -487,16 +386,18 @@ def scan_source(source: str, source_file: str) -> Registry:
                 routine.kind,
                 parent_id,
                 source_file,
-                _line_at(source, routine.start),
-                _line_at(source, routine.end),
+                _line_at(line_index, routine.start),
+                _line_at(line_index, routine.end),
                 "resolved",
                 signature=_normalize(header),
                 datatype=_normalize(return_match.group("datatype")) if return_match else None,
                 evidence=_evidence(source, routine.start, routine.header_end),
             )
         )
-        entities.extend(_parameters(source, masked, routine, source_file))
-        entities.extend(_declaration_entities(source, masked, routine, source_file))
+        entities.extend(_parameters(source, masked, routine, source_file, line_index))
+        entities.extend(
+            _declaration_entities(source, masked, routine, source_file, line_index)
+        )
 
     return Registry(
         sorted(entities, key=lambda entity: entity.object_id),
