@@ -14,6 +14,25 @@ available lineage tools to produce concise, evidence-backed reports.
 Ask it to trace a PL/SQL object, explain where a table or column is used, or
 document a routine's callers, dependencies, and data flow.
 
+### Relationship index and queries
+
+The Rust scanner registers objects (Phase 1). The Python `datalineague` command
+adds indexed relationships to that registry and queries them:
+
+```bash
+.venv/bin/datalineague relate src.pkb --registry registry.json   # CALLS, READS, WRITES, DERIVES_FROM
+.venv/bin/datalineague query registry.json calls my_proc --transitive
+.venv/bin/datalineague query registry.json reads my_proc --transitive --format markdown
+.venv/bin/datalineague query registry.json brief my_proc          # "In brief" Mermaid diagram
+```
+
+Query commands: `inventory`, `calls`, `callers`, `reads`, `writes`, `unresolved`, `brief`.
+Every relation carries source lines, exact evidence, and a status (`resolved`,
+`ambiguous`, `dynamic_sql`, `unsupported`). The contract is described in
+[PLSQL_Lineage_Architecture.md](01Context_Docs/PLSQL_Lineage_Architecture.md).
+Data-flow (`ASSIGNS_TO`) is not implemented. Run the tests with
+`.venv/bin/python -m unittest discover -s tests -t .`.
+
 ### Typical subagent sequence
 
 The orchestrator uses the relevant specialists for each request; not every

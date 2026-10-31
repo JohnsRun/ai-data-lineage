@@ -27,6 +27,10 @@ native/
 - `registry.rs` implements source discovery, comment/string masking, routine
   discovery, object registration, diagnostics, and JSON output.
 - `plsql-lineage-scanner.rs` is the command-line entry point.
+- The Rust scanner emits Phase 1 entities and diagnostics only. Relationships
+  (`CALLS`, `READS`, `WRITES`, `DERIVES_FROM`) are added to its registry by the
+  Python `datalineague relate` command, which needs the project `.venv`; see
+  the README.
 - `Cargo.lock` pins Rust crate versions. Keep it under version control and use
   `--locked` for reproducible builds.
 - The orchestrator agent selects the executable matching the host OS and

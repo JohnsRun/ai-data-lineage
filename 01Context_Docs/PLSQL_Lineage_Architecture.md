@@ -148,6 +148,24 @@ Each relationship should include:
 
 Use explicit statuses such as `resolved`, `ambiguous`, `dynamic_sql`, and `unsupported`. Confidence must not be used to disguise an unverified LLM guess as a confirmed relationship.
 
+#### Implemented contract (`relationship_contract: "1.0"`)
+
+`datalineague relate` adds these top-level keys to a Phase 1 registry; `entities` and `diagnostics` are not modified.
+
+| Key | Content |
+|---|---|
+| `relations` | Relation records, sorted deterministically |
+| `external_entities` | `TABLE`, `COLUMN`, and `EXTERNAL_ROUTINE` identities referenced by relations but not defined in the scanned source |
+| `relation_diagnostics` | Extraction problems, such as `ROUTINE_REGISTRY_MISMATCH` or `ROUTINE_BODY_NOT_FOUND` |
+
+Relation fields: `relation_id` (first 16 hex characters of SHA-1 over relation, source, target, file, and line range, so identical edges deduplicate), `relation`, `source_id`, `target_id` (null when unresolved), `source_file`, inclusive 1-based `start_line`/`end_line`, `evidence` (exact source text), `resolution_status`, `evidence_quality` (`source_exact` or `source_derived`), and `reason` (required for every non-resolved edge). A `resolved` edge always has a `target_id` and no `reason`.
+
+An edge points from the dependent object to the object it depends on. `CALLS`: caller → callee. `READS`/`WRITES`: routine → `TABLE:<NAME>`. `DERIVES_FROM`: derived `COLUMN:<TABLE>.<COLUMN>` → upstream column. `REFERENCES` with `dynamic_sql` status and a null target records runtime-built SQL.
+
+Identities: `<PACKAGE>.<ROUTINE>` (with `#N` for later overloads), `TABLE:<NAME>`, `COLUMN:<TABLE>.<COLUMN>`, and `EXTERNAL:<PACKAGE>.<ROUTINE>`. Names keep the qualification written in the source; unqualified names are not schema-resolved. External-routine edges are `unsupported` with `EXTERNAL_BUILTIN_PACKAGE` (Oracle-supplied packages such as `DBMS_*`, `UTL_*`, `APEX_*`, `OWA*`, `HTP`) or `EXTERNAL_ROUTINE_UNAVAILABLE`.
+
+Supported call forms are `name(...)`, `pkg.name(...)`, and statement-level `name;`. A function referenced without parentheses inside an expression is not detected. Unqualified identifiers that match a declared PL/SQL variable or parameter are treated as variables, not columns.
+
 ## 6. Analysis Pipeline
 
 ### Stage A: Source scanning
@@ -399,6 +417,8 @@ Do not claim improvement until measured against the reference set.
 6. External procedures, synonyms, overloaded routines, and conditional compilation can introduce ambiguity.
 7. Source line numbers may become stale when files change; indexes must be refreshed or invalidated.
 8. Sequence diagrams describe statically identified calls and should not imply that every path executes at runtime.
+9. Phase 1 registers a routine that declares a nested routine with the nested routine's end line, because it anchors on the first `BEGIN`. `relate` reports `ROUTINE_BODY_NOT_FOUND` for such routines and does not extract relationships from their bodies.
+10. Sequences (`NEXTVAL`/`CURRVAL`), package-level variables, and calls in declaration-section default expressions are not modeled.
 
 ## 10. Immediate Next Actions
 
