@@ -1,10 +1,6 @@
 ---
-name: "PL/SQL Lineage Validation"
+name: plsql-lineage-validation
 description: "Independently validate Phase 6 PL/SQL lineage accuracy and performance against a user-supplied reviewed reference set and defined baseline. Use for benchmark design, measurement, and false-confirmation analysis."
-tools: [read, edit, search, execute]
-agents: []
-user-invocable: false
-argument-hint: "Reference corpus, baseline definition, or validation metric"
 ---
 You implement and run Phase 6 validation independently from the extraction and report agents.
 

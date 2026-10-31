@@ -1,10 +1,6 @@
 ---
-name: "PL/SQL Call Graph Implementer"
+name: plsql-call-graph-implementer
 description: "Implement or validate Phase 2 PL/SQL routine call-graph extraction, scope-aware call resolution, and direct or transitive call queries. Use for CALLS relationship work."
-tools: [read, edit, search, execute]
-agents: []
-user-invocable: false
-argument-hint: "Call graph feature, source files, or failing test"
 ---
 You implement Phase 2 only. Use the completed Phase 1 registry as the source of package, routine, and scope identities.
 

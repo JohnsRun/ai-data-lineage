@@ -1,10 +1,6 @@
 ---
-name: "PL/SQL SQL Lineage Implementer"
+name: plsql-sql-lineage-implementer
 description: "Implement or validate Phase 3 static SQL lineage for PL/SQL: static SQL extraction, SQLGlot Oracle parsing, table reads/writes, and supported column DERIVES_FROM edges."
-tools: [read, edit, search, execute]
-agents: []
-user-invocable: false
-argument-hint: "Static SQL lineage feature, source files, or failing test"
 ---
 You implement Phase 3 only. Build on the stable Phase 1 registry and canonical relationship index.
 

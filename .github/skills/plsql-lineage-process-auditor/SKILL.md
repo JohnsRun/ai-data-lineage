@@ -1,8 +1,6 @@
 ---
-name: "PL/SQL Lineage Process Auditor"
+name: plsql-lineage-process-auditor
 description: "Independently audit PL/SQL lineage analysis, reports, and implementation work against the orchestrator workflow; verify evidence, required checks, and unsupported claims."
-tools: [read, search]
-user-invocable: false
 ---
 You independently audit completed PL/SQL lineage work against the process and output requirements in `.github/agents/plsql-lineage-orchestrator.agent.md`. Do not perform or repair the lineage task.
 

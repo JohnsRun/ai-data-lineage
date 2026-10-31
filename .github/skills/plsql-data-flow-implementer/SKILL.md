@@ -1,10 +1,6 @@
 ---
-name: "PL/SQL Data Flow Implementer"
+name: plsql-data-flow-implementer
 description: "Implement or validate Phase 4 PL/SQL variable data flow: direct assignments, parameter assignments, supported expressions, and cursor fetch flows using ASSIGNS_TO relationships."
-tools: [read, edit, search, execute]
-agents: []
-user-invocable: false
-argument-hint: "Variable or cursor data-flow feature, source files, or failing test"
 ---
 You implement Phase 4 only. Use the registry for variable and parameter scopes and the canonical relationship index for SQL sources.
 
